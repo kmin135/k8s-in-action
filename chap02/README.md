@@ -24,6 +24,7 @@ kubectl describe node kubia-0rrx
 
 # 실행중인 파드를 조회하되 상세정보까지 표시 (Pod IP, Pod가 실행중인 노드)
 kubectl get pods -o wide
+k get po -o wide
 # 특정 파드 상세정보 확인
 kubectl describe pod kubia
 ```
@@ -44,3 +45,9 @@ source ~/.bashrc
 * k8s dashboard는 클러스터의 현황을 GUI로 제공해주는 도구임
 * 필요하면 아래 링크 참고해서 해보기
 * https://andrewlock.net/running-kubernetes-and-the-dashboard-with-docker-desktop/
+
+## 클러스터 기본 개념
+
+* 마스터 노드에는 REST API 서버, 스케줄러가 있다.
+* 각 워커 노드는 컨테이너 런타임 (도커 등), kubelet, kube-proxy 를 실행한다.
+* 클라이언트는 kubectl 명령을 활용해서 마스터 노드의 REST API 서버에 요청을 보내 클러스터와 상호작용한다.
