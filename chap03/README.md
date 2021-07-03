@@ -181,6 +181,7 @@ spec:
 
 ```yaml
 # 레이블과 마찬가지로 yaml에 annotation 을 정의할 수 있음
+# 어노테이션 이름은 예제와 같이 계층구조로 정의하는 것이 좋은데 다른 도구나 라이브러리가 어노테이션을 덮어씌우는 문제를 회피하기 위함임
 apiVersion: v1
 kind: Pod
 metadata:
@@ -191,7 +192,7 @@ metadata:
 
 ```bash
 # 명령어로 어노테이션 추가 및 수정
-k annotate pod kubia-manual mycompany.com/annotation1="foo bar"
+k annotate pod kubia-manual mycompany.com/annotation2="foo bar2"
 
 # 어노테이션 조회
 k get po kubia-manual -o yaml | less
@@ -203,6 +204,7 @@ kind: Pod
 metadata:
   annotations:
     mycompany.com/annotation1: foo bar
+    mycompany.com/annotation2: foo bar2
 # ...
 ```
 
