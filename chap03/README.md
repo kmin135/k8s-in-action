@@ -140,3 +140,73 @@ k get po -l 'env in (prod,debug)'
 # not in
 k get po -l 'env notin (prod,debug)'
 ```
+
+## 레이블과 셀렉터를 이용해 파드 스케줄링 제한
+
+* 기본적으로 파드는 워커 노드 전체에 무작위로 스케줄링됨
+* 그러나 SSD 를 사용한다거나 GPU 사용이 가능한 노드에만 파드를 배포해야하는 경우가 있을 수 있음
+* 이 경우에도 레이블을 이용할 수 있음
+
+```bash
+# 특정 노드에 gpu 가 있음을 알리는 레이블 지정
+k label node docker-desktop gpu=true
+```
+
+* 노드 셀렉터를 활용하여 특정 레이블을 가진 노드에만 배포되도록 할 수 있음
+
+```yaml
+# kubia-gpu.yaml
+# ...
+spec:
+    nodeSelector:
+      gpu: "true"
+    containers:
+    - image : luksa/kubia
+      name: kubia
+# ...
+```
+
+* 각 노드는 기본적으로 몇 가지 레이블을 가지는데 그 중에서 `kubernetes.io/hostname` 레이블은 각 노드의 호스트네임을 값으로 가짐. 이 점을 활용하여 특정 노드에 배포하는 것도 가능은 함.
+  * 그러나 해당 노드에 문제가 생길 경우 그대로 장애로 이어지므로 특정 노드를 지정하는 것은 올바른 방법이 아님
+  * 대신 `GPU 를 가진 노드에만 배포한다`와 같이 특정 속성을 가진 노드 그룹의 단위로 생각하는 것이 올바름
+
+## 파드에 어노테이션 달기
+
+* 레이블과 유사하게 `키-값` 쌍의 정보
+* 레이블은 특정 오브젝트를 묶는 데 사용하거나 레이블 셀렉터로 특정 오브젝트를 선택할 수 있지만 어노테이션은 그런 기능은 없고 단순 정보 제공만 가능함
+* 대신 어노테이션은 레이블과 달리 긴 정보를 지정하는데 적합하고 최대 256KB까지 저장가능
+* 사용예를 들면 흔히 쿠버네티스에 신규 기능을 도입할 때 바로 필드로 추가되는게 아니라 일단 어노테이션으로 실험하고 공식 기능으로 들어가면 필드로 추가되고 해당 어노테이션의 사용이 중단되는 방식으로 사용한다고 함
+* 그 외에 오브젝트에 설명을 추가하는 용도로 쓰임. 오브젝트에 대한 주석이라고 보면 될 듯.
+
+
+```yaml
+# 레이블과 마찬가지로 yaml에 annotation 을 정의할 수 있음
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    mycompany.com/annotation1: foo bar
+# ...
+```
+
+```bash
+# 명령어로 어노테이션 추가 및 수정
+k annotate pod kubia-manual mycompany.com/annotation1="foo bar"
+
+# 어노테이션 조회
+k get po kubia-manual -o yaml | less
+```
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    mycompany.com/annotation1: foo bar
+# ...
+```
+
+```bash
+# 또는 describe 로도 볼 수 있음
+k describe pod kubia-manual | grep -A5 Annotations
+```
