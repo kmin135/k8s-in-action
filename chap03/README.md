@@ -212,3 +212,94 @@ metadata:
 # 또는 describe 로도 볼 수 있음
 k describe pod kubia-manual | grep -A5 Annotations
 ```
+
+## 네임스페이스를 사용한 리소스 그룹화
+
+* 네임스페이스는 이름의 범위를 제공함. 모든 리소스를 단일 네임스페이스에 두는 대신에 여러 네임스페이스로 분할할 수 있음
+* 네임스페이스를 활용하면 서로 관계없는 리소스를 겹치지 않는 그룹으로 분리할 수 있음
+  * 다른 팀들이 동일한 클러스터를 별도 클러스터를 사용하는 것처럼 이용할 수 있게 해줌
+* 네임스페이스는 리소스를 격리하는 것 외에도 특정 사용자가 지정된 리소스에 접근할 수 있도록 허용하고, 개별 사용자가 사용가능한 컴퓨팅 리소스를 제한하는 데에도 사용됨 (12~14장)
+* 리소스 이름은 각 네임스페이스 별로 고유하면 됨
+* 대부분의 리소스는 네임스페이스 안에 속하지만 노드처럼 글로벌리소스라 특정 네임스페이스에 속하지 않는 리소스도 존재함 (4장에서 클러스터 수준 리소스를 다룸)
+
+```bash
+# 클러스터의 모든 ns 조회
+k get ns
+# 특정 네임스페스의 pods 조회 (-n도 가능)
+k get po --namespace kube-system
+
+```
+
+### 네임스페이스 생성
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: custom-namespace
+```
+```bash
+# 네임스페이스도 yaml로 생성할 수 있음
+kubectl create -f custom-namespace.yaml
+# 명령어로 직접 생성도 가능
+kubectl create namespace custom-namespace
+```
+
+### 네임스페이스별로 오브젝트 관리
+
+* 특정 네임스페이스에 리소스를 만들려면 `metadata` 섹션에 `namespace: custom-namespace` 와 같이 지정하거나
+```bash
+# 와 같이 create할 때 -n 옵션을 사용한다.
+k create -f kubia-manual.yaml -n custom-namespace
+```
+* 그 외에도 리소스 조회, 수정, 삭제 등을 수행할 때도 네임스페이스를 지정하면 됨
+* 지정하지 않으면 현재 kubectl 컨텍스트의 기본 네임스페이스에서 작업을 수행함
+* 현재 컨텍스트의 네임스페이스와 현재 컨텍스트 자체는 `kubectl config` 명령으로 변경 가능 (부록A 참고)
+
+```bash
+# 네임스페이스 전환용 alias tip
+alias kcd='kubectl config set-context $(kubectl config current-context) --namespace '
+
+# 사용법
+kcd custom-namespace
+kcd default
+```
+
+### 네임스페이스의 격리에 대해
+
+* 네임스페이스는 오브젝트를 별도 그룹으로 분리해 특정 네임스페이스안에 속한 리소스를 대상으로 작업할 수 있게 해주나 실행 중인 오브젝트에 대한 격리는 제공하지 않음
+* 예를들어 파드를 서로 다른 네임스페이스에 배포했을 때 서로 통신을 못 한다고 생각할 수 있으나 이는 쿠버네티스와 함께 배포하는 네트워킹 솔루션에 따라 다름. 네트워킹 솔루션이 네임스페이스간 격리를 제공하지 않는다면 서로 다른 네임스페이스에 속한 파드간에도 서로의 IP만 알고 있다면 통신하는데 아무 제약사항이 없음
+
+## 파드의 중지와 제거
+
+* 파드를 삭제하면 쿠버네티스를 파드 안에 있는 모든 컨테이너를 종료하도록 지시함
+  1. SIGTERM 신호를 프로세스에 보내고 지정된 시간(기본 30초) 동안 대기
+  2. 시간 내에 종료되지 않으면 SIGKILL 신호를 통해 종료
+* 프로세스가 정상 종료되게하려면 SIGTERM 신호를 올바르게 처리해야함
+* 레플레이션컨트롤러 등을 통해 생성된 파드는 파드를 직접 삭제해도 rc가 즉각 파드를 복구하기 때문에 이 경우에는 rc도 삭제해야함
+
+```bash
+# 1개
+kubectl delete po kubia-gpu
+# 여러개
+k delete po pod1 pod2
+# 레이블 셀렉터를 활용하여 특정 레이블을 가진 모든 파드 제거
+k delete po -l createion_method=manual
+# 네임스페이스를 삭제하면 해당 네임스페이스에 속한 파드도 제거됨
+k delete ns custom-namespace
+
+# 현재 네임스페이스의 모든 파드 삭제
+k delete po --all
+```
+
+---
+
+* 네임스페이스의 거의 모든 리소스 삭제
+
+```bash
+kubectl delete all --all
+```
+
+* 위 명령으로 현재 네임스페이스의 거의 모든 리소스 (레플리케이션컨트롤러, 파드, 생성한 모든 서비스) 를 삭제
+* 그러나 시크릿 (7장) 등 이 명령어로는 삭제가 안 되고 명시적으로 삭제해야하는 리소스도 있음
+* 위 명령은 `kubernetes` 서비스도 제거하는데 잠시 후 자동으로 다시 생성됨
