@@ -207,3 +207,78 @@ kubectl delete rc kubia --cascade=false
 
 * `--cascade=false` 옵션으로 rc만 삭제하고 레이블 셀렉터가 일치하는 새로운 rc 를 만들면 대상 파드들은 다시 관리받게 됨
   * 활용예제 : rc대신 레플리카셋으로 관리방식을 바꿀 때 무중단으로 변경이 가능함
+
+## 레플리케이션컨트롤러(rc) 대신 레플리카셋(rs)으로 대체
+
+* rs가 rc를 완전히 대체함
+* 단, rs도 일반적으로는 직접 생성하기보다는 상위 수준의 디플로이먼트 리소스를 생성할 때 자동으로 생성됨.
+
+### rc와 rs의 비교
+
+* 기본 동작은 동일하나 rs가 더 풍부한 셀렉터 표현식을 제공함
+* [kubia-replicaset.yaml](kubia-replicaset.yaml)
+* [kubia-rc](kubia-rc.yaml)와는 셀럭터 정의 부분이 다름. rc는 selector 바로 아래에 오고 rs는 selector.matchLabels 에 지정함
+
+### rs 사용법
+
+* 만약 셀렉터와 일치하는 파드개수가 이미 만들어져 있었다면 새롭게 파드를 생성하지 않음.
+
+```bash
+# rs 상태 확인
+kubectl get rs
+kubectl describe rs
+```
+---
+
+* API 버전 속성
+* core API 그룹에 속하는 리소스는 apiVerison 필드가 필요없음. (ex. 파드)
+* 반면 ReplicaSet 은 `apps/v1` 이라고 지정했는데 `apps`는 API 그룹, `v1` 은 API 버전을 의미함.
+
+---
+
+* 다양한 표현식을 지원하는 `matchExpressions` 를 지원함
+```yaml
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+         - kubia
+```
+* In, NotIn, Exists, DoesNotExists 의 4가지 연산자를 제공
+* 여러 표현식을 지정하면 모든 표현식이 true 여야 매칭됨
+* matchLabels와 함께 사용할경우에도 모든 레이블, 표현식이 true 여야 매칭됨
+
+```bash
+# rs 삭제
+kubectl delete rs kubia
+```
+
+## 4.4 데몬셋
+
+* rc, rs 모두 클러스터 내 어딘가에 지정된 수만큼의 파드를 실행하는데 사용함
+* 데몬셋은 클러스터 내 모든 노드에 노드당 1개씩만 파드가 실행되길 원할 때 사용함
+* 시스템 수준의 작업을 수행하는 인프라 관련 파드에 유용함
+  * 로그 수집기, 리소스 모니터링 등
+* 데몬셋의 특성상 원하는 (DESIRED) 복제본 수라는 개념이 없음. 1개씩이니까.
+* 노드가 다운되도 다른 곳에 파드를 생성하지 않음.
+* 반면 새로운 노드가 추가되거나 누군가 실수로 데몬셋이 관리하는 파드를 삭제하면 즉각 데몬셋이 파드를 생성함
+* 기본적으로 모든 클러스터 노드에 파드를 배포하지만 `node-Selector` 속성을 지정하여 파드를 배포할 노드의 그룹을 지정할 수 있음
+
+---
+
+* 예제 : ssd를 가지는 노드 그룹에 ssd-monitor 라는 데몬을 실행하고자 하는  경우 등
+* (ssd-monitor-daemonset)[ssd-monitor-daemonset.yaml]
+
+```bash
+k create -f ssd-monitor-daemonset.yaml
+
+# disk=ssd 인 노드가 없을때는 파드가 생성되지 않음
+k get ds
+
+# disk=ssd 라벨을 지정해주면 대상 노드에 즉각 ssd-monitor 파드가 생성됨
+k label node docker-desktop disk=ssd
+
+# 라벨을 변경하면 해당 노드에서 제거됨
+k label node docker-desktop disk=hdd --overwrite
+```
