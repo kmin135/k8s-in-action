@@ -268,7 +268,7 @@ kubectl delete rs kubia
 ---
 
 * 예제 : ssd를 가지는 노드 그룹에 ssd-monitor 라는 데몬을 실행하고자 하는  경우 등
-* (ssd-monitor-daemonset)[ssd-monitor-daemonset.yaml]
+* [ssd-monitor-daemonset.yaml](ssd-monitor-daemonset.yaml)
 
 ```bash
 k create -f ssd-monitor-daemonset.yaml
@@ -281,4 +281,61 @@ k label node docker-desktop disk=ssd
 
 # 라벨을 변경하면 해당 노드에서 제거됨
 k label node docker-desktop disk=hdd --overwrite
+```
+
+## 4.5 잡 리소스
+
+* rc, rs, ds 는 모두 계속 실행되야하는 파드를(웹 애플리케이션 등) 실행하는데 쓰임
+* 반면 잡 리소스는 명시적으로 완료 가능한 프로세스를 한 번만 실행시키는데 사용됨
+  * batch job 등
+
+---
+
+* 예제1 : [batch-job.yaml](batch-job.yaml)
+* 2분간 sleep 후 종료되는 단순한 프로세스
+* restartPolicy 는 OnFailure 또는 Never 로 명시적으로 설정해야함
+  * OnFailure인 경우 실행중에 노드에 장애가 발생할 경우 다른 노드에서 실행됨.
+
+```bash
+k get jobs
+# 책에는 완료된 pod는 -a 옵션을 줘야 보인다는데 해당 옵션은 없고 그냥 completed 상태로 잘 조회됨
+k get po
+# 완료된 pod 가 남아있으므로 로그를 조회하기 용이함
+k logs batch-job-8vss
+# job을 삭제하면 대상 pod도 제거됨
+k delete job batch-job
+```
+
+-- 
+
+* 예제2 : [multi batch job](multi-completion-batch-job.yaml)
+* 예제1과 동일하되 completions에 지정한 만큼 순차적으로 실행함
+* parallelism 에 지정한만큼 병렬로 실행할 수도 있음 (생략하면 1이라고 볼 수 있음)
+
+```bash
+# 책에서는 kubectl scale job 명령으로 job 실행 도중에 parallelism을 바꾸는데 이는 1.15부터 불가능한 방법임
+# 대신 아래와 같이 edit 명령으로 parallelism 값을 수정하고 저장하면 실행 도중에 동시 수행 pod 개수를 변경할 수 있음
+k edit job multi-completion-batch-job
+```
+
+---
+
+* job pod의 최대 실행시간 (timeout) 설정이 필요할 경우 대상 파드 스펙에 `activeDeadlineSeconds` 속성을 설정할 수 있음
+  * 파드가 설정값 보다 오래 실행되면 쿠버네티스가 종료시키고 job이 실패한 것으로 표시됨
+* 추가로 job의 설정에 `spec.backoffLimit` 를 지정해 job을 실패한 것으로 표시하기 전에 재시도할 수 있는 횟수를 설정할 수 있음. 기본값 6.
+
+## 4.6 주기적으로 Job 실행 (CronJob)
+
+* 이름대로 Job에 cron을 적용한 방식
+* cron 설정 외에는 Job과 유사
+* `startingDeadlineSeconds` 옵션을 지정하면 지정한 초 이내에 파드가 실행되지 않으면 실패로 간주함. 파드가 예정보다 너무 늦게 시작되서는 안 될 경우에 유용함.
+
+---
+
+* 예제 : [cronjob](cronjob.yaml)
+```bash
+k get cronjob
+
+NAME                              SCHEDULE             SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+batch-job-every-fifteen-minutes   0,15,30,45 * * * *   False     0        <none>          24s
 ```

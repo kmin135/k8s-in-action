@@ -1,0 +1,18 @@
+# Job은 batch 그룹에 속함
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: batch-job
+# spec에 지정한 파드 템플릿을 기준으로 만들어지므로 rs등과 달리 파드 셀렉터 지정이 없음
+spec:
+  template:
+    metadata:
+      labels:
+        app: batch-job
+    spec:
+      restartPolicy: OnFailure # 기본 재시작 정책인 Always 사용할 수 없음.
+      containers:
+      - name: main
+        image: luksa/batch-job
+
+
