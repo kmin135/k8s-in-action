@@ -180,3 +180,92 @@ spec:
 * 이를 통해 이를 사용할 파드에서는 `api.somecompany.com`로 사용하는 대신 `external-service.default.svc.cluster.local` 과 같은 클러스터 내부의 FQDN 으로 외부 서비스에 연결할 수 있음
 * 이 또한 구체적인 위치를 추상화한 것이므로 추후 환경변화에 유연하게 대응할 수 있음
 * ExternalName 은 DNS레벨에서 구현됨 (실제로 CNAME DNS 레코드가 생성됨). 따라서 해당 서비스에 접근할 때는 서비스 프록시를 무시하고 외부 서비스에 직접 연결되고 이 때문에 ExternalName 유형의 서비스는 ClusterIP를 얻지 못 함.
+
+## 5.3 외부 클라이언트에 서비스 노출
+
+  시스템을 외부에 오픈하는 방법. VM 환경에서 맨 앞단에 위치하는 L4 역할이라고 보면 됨.
+  
+1. NodePort : 클러스터의 각 노드가 노드 자체에서 포트를 열고 해당 포트로 수신된 트래픽을 서비스로 전달
+2. NodePort 의 확장인 로드밸런서 : 쿠버네티스가 실행 중인 인프라 환경(클라우드 등)에 프로비저닝된 전용 LB 사용. LB는 트래픽을 모든 노드의 노드포트로 전달
+3. Ingress : L7 레벨로 작동. 단일 IP 주소로 여러 서비스를 노출하는 등 L4 대비 많은 기능 제공
+
+### NodePort
+
+* [kubia-svc-nodeport.yaml](kubia-svc-nodeport.yaml)
+```bash
+k get svc kubia-nodeport
+NAME            CLUSTER-IP      EXTERNAL-IP PORT(S)
+kubia-nodeport  10.111.254.223  <nodes>     80:30123/TCP
+```
+* 다음의 IP들로 접속 가능
+  * 10.111.254.223:80
+  * <첫 번째 노드IP>:30123
+  * <두 번째 노드IP>:30123
+  * ...
+* 외부 인터넷의 사용자는 CLUSTER-IP 로는 못 붙으므로 각 노드의 IP를 알아야함
+* 또한 각 노드들은 30123 포트를 오픈해야함 (inbound)
+* 특정 노드가 down 되었을 때 클라이언트측은 이를 모르고 계속 요청을 보낼 수 있음
+
+```bash
+# Tip : JSONPath를 사용해 모든 노드의 IP 가져오기
+k get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="ExternalIP")].address}'
+
+# 이외에도 jsonpath를 활용하면 다양한 리소스의 원하는 정보를 쉽게 얻을 수 있음
+# https://kubernetes.io/ko/docs/reference/kubectl/jsonpath/
+```
+
+### 외부 로드밸런서로 서비스 노출
+
+* 클라우드 공급자 (AWS, Azure 등)이 제공하는 k8s 는 보통 로드밸런서를 자동 프로비저닝하는 기능을 제공함
+* 서비스 유형을 노드포트 대신 로드밸런서로 바꾸기만 하면 됨
+* 로드밸런서 서비스는 노드포트 서비스의 확장임
+* [kubia-svc-loadbalancer.yaml](kubia-svc-loadbalancer.yaml)
+```bash
+k get svc kubia-loadbalancer
+NAME            CLUSTER-IP      EXTERNAL-IP     PORT(S)
+kubia-nodeport  10.111.254.223  130.211.52.173  80:32143/TCP
+```
+* 서비스를 생성하면 사용중인 클라우드 인프라에서 로드밸런서를 생성함
+* 그냥 NodePort 때와는 달리 EXTERNAL-IP 가 단일IP로 설정됨
+* 사용자는 `http://130.211.52.173` 으로 접속가능함.
+* 즉, 해당 공인 IP를 고정사용하도록 구매하고 DNS에 등록하면 시스템을 오픈할 수 있음
+* 단순히 각 노드 앞단에 LB 장비가 추가된 형태이므로 그냥 노드포트처럼 각 노드에 방화벽을 오픈하여 노드에 직접 접속하는 것도 가능함
+
+---
+
+* 노드포트나 노드포트+LB 모두 클라이언트 IP가 유지되지 않음
+* (내의견) LB 방식의 경우 XFF 적용이 가능하지 싶은데 이건 각 클라우드 벤더별로 확인이 필요한 사항
+
+### Ingress
+
+* https://kubernetes.io/ko/docs/concepts/services-networking/ingress/
+* 한 IP 주소로 수십 개의 서비스를 제공할 수 있음
+* 요청한 Host 와 경로에 따라 요청을 전달한 서비스를 결정함
+* L7 LB이므로 그냥 서비스가 못 하는 쿠키 기반 세션 어피니티 등의 추가 기능을 제공함
+* 인그레스를 실행하려면 클러스터에 인그레스 컨트롤러를 실행해야함. 컨트롤러는 클라우드 벤더별로 다를 수 있음.
+* 인그레스의 기능은 인그레스 컨트롤러 구현마다 다르므로 세부 내용은 각 구현체의 문서를 확인해야함
+
+---
+
+* [kubia-ingress.yaml](kubia-ingress.yaml)
+```shell
+k get ingresses
+```
+* 동작방식은 인그레스 컨트롤러가 클라이언트의 요청을 받으면 `인그레스->서비스->엔드포인트` 를 통해 파드 IP를 조회한다음 인그레스 컨트롤러가 요청을 파드에 전달함
+  * 모든 컨트롤러가 이런 것은 아니지만 대부분 이와 같다고 함
+* 위 yaml을 보면 rules, paths 라고 되있는대로 한 개의 ingress에 복수의 host와 host별 경로를 설정할 수 있음
+  * 실제 처리는 클라이언트가 보내는 HTTP의 `Host` 헤더로 구분함
+
+---
+
+* [kubia-ingress-tls.yaml](kubia-ingress-tls.yaml)
+* 인그레스를 그냥 만들면 HTTP만 지원하며 HTTPS 는 안 됨
+* tls 지원을 위해 개인키와 인증서를 통해 시크릿을 만들고 이를 yaml에 지정해야함
+```shell
+openssl genrsa -out tls.key 2048
+openssl req -new -x509 -key tls.key -out tls.cert -days 365 -subj /CN=kubia.example.com
+k create secret tls tls-secret --cert=tls.cert --key=tls.key
+```
+
+## 5.5 레디니스 프로브 (readiness probe) : 파드가 연결을 수락한 준비가 됐을 때 신호 보내기
+

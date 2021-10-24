@@ -1,0 +1,15 @@
+# 211024 확인사항
+# Warning: extensions/v1beta1 Ingress is deprecated in v1.14+, unavailable in v1.22+; use networking.k8s.io/v1 Ingress
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: kubia
+spec:
+  rules:
+  - host: kubia.example.com # 이 도메인 이름을 서비스에 매핑
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: kubia-nodeport # 모든 요청을 이 서비스의 80 포트로 전달
+          servicePort: 80
